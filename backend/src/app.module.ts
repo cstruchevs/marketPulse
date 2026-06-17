@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { getDatabaseConfig } from './config/database.config';
@@ -11,39 +13,47 @@ import { ProductsModule } from './products/products.module';
 import { PriceHistoryModule } from './price-history/price-history.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ScraperModule } from './scraper/scraper.module';
+import { WorkersModule } from './workers/workers.module';
 
 @Module({
   imports: [
-    // Config — load .env globally
     ConfigModule.forRoot({ isGlobal: true }),
 
-    // Database
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
 
-    // Rate limiting — global ThrottlerGuard in providers below
+    // BullMQ root — connects to Redis once, shared by all queues
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          url: config.getOrThrow<string>('REDIS_URL'),
+          maxRetriesPerRequest: null,
+        },
+      }),
+    }),
+
+    // Cron jobs (@Cron decorator)
+    ScheduleModule.forRoot(),
+
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
 
-    // Feature modules
     AuthModule,
     UsersModule,
     ProductsModule,
     PriceHistoryModule,
     AlertsModule,
     ScraperModule,
-    // ScraperApiModule — Step 7
-    // WorkersModule    — Step 8
-    // SseModule        — Step 9
-    // McpModule        — Step 10
-    // StorageModule    — Step 11
-    // ExportModule     — (Step 12)
+    WorkersModule,
+    // SseModule  — Step 9
+    // McpModule  — Step 10
   ],
   controllers: [AppController],
   providers: [
-    // Apply ThrottlerGuard globally; individual routes use @Throttle() to override
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })

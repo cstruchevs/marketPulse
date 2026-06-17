@@ -10,6 +10,11 @@ export class ProductRepository {
     private readonly repo: Repository<Product>,
   ) {}
 
+  // For internal workers only — skips user ownership check
+  findById(id: string): Promise<Product | null> {
+    return this.repo.findOne({ where: { id } });
+  }
+
   // BOLA guard — always filter by userId so one user can't access another's products
   findByIdAndUserId(id: string, userId: string): Promise<Product | null> {
     return this.repo.findOne({ where: { id, userId } });
