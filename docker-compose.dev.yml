@@ -1,0 +1,40 @@
+services:
+  api:
+    build:
+      context: ./backend
+      target: development
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/package.json:/app/package.json
+    ports:
+      - "3000:3000"
+      - "9229:9229"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://mp_user:mp_secret@postgres:5432/market_pulse
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run start:dev
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+    ports:
+      - "5173:5173"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+    command: npm run dev -- --host
+    restart: unless-stopped

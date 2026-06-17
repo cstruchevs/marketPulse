@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mp_user
+      POSTGRES_PASSWORD: mp_secret
+      POSTGRES_DB: market_pulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mp_user -d market_pulse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  adminer:
+    image: adminer:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: s3,ses,secretsmanager,lambda
+      DEFAULT_REGION: us-east-1
+      DEBUG: 0
+    volumes:
+      - localstack_data:/var/lib/localstack
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  localstack_data:
