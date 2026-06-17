@@ -14,6 +14,8 @@ import { PriceHistoryModule } from './price-history/price-history.module';
 import { AlertsModule } from './alerts/alerts.module';
 import { ScraperModule } from './scraper/scraper.module';
 import { WorkersModule } from './workers/workers.module';
+import { SseModule } from './sse/sse.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -25,7 +27,6 @@ import { WorkersModule } from './workers/workers.module';
       useFactory: getDatabaseConfig,
     }),
 
-    // BullMQ root — connects to Redis once, shared by all queues
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -37,9 +38,7 @@ import { WorkersModule } from './workers/workers.module';
       }),
     }),
 
-    // Cron jobs (@Cron decorator)
     ScheduleModule.forRoot(),
-
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 60 }]),
 
     AuthModule,
@@ -49,8 +48,9 @@ import { WorkersModule } from './workers/workers.module';
     AlertsModule,
     ScraperModule,
     WorkersModule,
-    // SseModule  — Step 9
-    // McpModule  — Step 10
+    SseModule,
+    McpModule,
+    // StorageModule — Step 11
   ],
   controllers: [AppController],
   providers: [

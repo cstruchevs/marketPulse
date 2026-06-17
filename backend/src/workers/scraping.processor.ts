@@ -7,6 +7,7 @@ import { REDIS_CLIENT } from '../config/redis.provider';
 import { ScraperService } from '../scraper/scraper.service';
 import { ProductRepository } from '../products/repositories/product.repository';
 import { PriceHistoryRepository } from '../price-history/price-history.repository';
+import { SseService } from '../sse/sse.service';
 import { ProductStatus } from '../products/product.entity';
 import {
   SCRAPING_QUEUE,
@@ -39,6 +40,7 @@ export class ScrapingProcessor extends WorkerHost {
     private readonly scraperService: ScraperService,
     private readonly productRepo: ProductRepository,
     private readonly priceHistoryRepo: PriceHistoryRepository,
+    private readonly sseService: SseService,
     @InjectQueue(ALERTS_QUEUE) private readonly alertsQueue: Queue,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
   ) {
@@ -62,7 +64,6 @@ export class ScrapingProcessor extends WorkerHost {
       return;
     }
 
-    // Distributed lock: prevent duplicate concurrent scrapes for same product
     const locked = await this.redis.set(lockKey, '1', 'EX', LOCK_TTL_SECONDS, 'NX');
     if (!locked) {
       this.logger.log(`Product ${productId} is already being scraped (lock active)`);
@@ -70,6 +71,12 @@ export class ScrapingProcessor extends WorkerHost {
     }
 
     const oldPrice = product.currentPrice ? Number(product.currentPrice) : null;
+
+    this.sseService.sendToUser(product.userId, {
+      type: 'scrape-started',
+      data: { productId, name: product.name ?? product.url },
+      id: `scrape-started-${productId}-${Date.now()}`,
+    });
 
     try {
       const result = await this.scraperService.scrapeProduct(product, job.id);
@@ -91,14 +98,44 @@ export class ScrapingProcessor extends WorkerHost {
         nextScrapeAt,
       );
 
-      // Populate name/image on first scrape
       if ((!product.name || !product.imageUrl) && (result.name || result.imageUrl)) {
         if (!product.name) product.name = result.name;
         if (!product.imageUrl && result.imageUrl) product.imageUrl = result.imageUrl;
         await this.productRepo.save(product);
       }
 
-      // Trigger alert if price dropped below threshold
+      // SSE: notify client about new price
+      const priceChange =
+        oldPrice != null && oldPrice !== 0
+          ? Math.round(((result.price - oldPrice) / oldPrice) * 10000) / 100
+          : null;
+
+      this.sseService.sendToUser(product.userId, {
+        type: 'scrape-completed',
+        data: {
+          productId,
+          name: product.name ?? result.name,
+          price: result.price,
+          currency: result.currency,
+        },
+        id: `scrape-completed-${productId}-${Date.now()}`,
+      });
+
+      if (oldPrice !== null && priceChange !== null) {
+        this.sseService.sendToUser(product.userId, {
+          type: 'price-update',
+          data: {
+            productId,
+            name: product.name ?? result.name,
+            oldPrice,
+            newPrice: result.price,
+            change: priceChange,
+            currency: result.currency,
+          },
+          id: `price-update-${productId}-${Date.now()}`,
+        });
+      }
+
       if (
         product.alertEnabled &&
         product.alertThreshold &&
@@ -112,13 +149,16 @@ export class ScrapingProcessor extends WorkerHost {
           threshold: Number(product.alertThreshold),
         };
         await this.alertsQueue.add(SEND_PRICE_ALERT_JOB, alertData, JOB_DEFAULTS);
-        this.logger.log(
-          `Price alert queued for product ${productId}: ${result.price} <= ${product.alertThreshold}`,
-        );
       }
     } catch (err) {
       const message = (err as Error).message;
       this.logger.error(`Scrape failed for product ${productId}: ${message}`);
+
+      this.sseService.sendToUser(product.userId, {
+        type: 'scrape-error',
+        data: { productId, name: product.name ?? product.url, error: message },
+        id: `scrape-error-${productId}-${Date.now()}`,
+      });
 
       await this.productRepo.updateAfterScrape(
         productId,
@@ -128,7 +168,7 @@ export class ScrapingProcessor extends WorkerHost {
         message,
       );
 
-      throw err; // let BullMQ apply exponential backoff retry
+      throw err;
     } finally {
       await this.redis.del(lockKey);
     }

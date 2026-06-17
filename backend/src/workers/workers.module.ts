@@ -8,6 +8,7 @@ import { QueueMonitorService } from './queue-monitor.service';
 import { ScraperModule } from '../scraper/scraper.module';
 import { ProductsModule } from '../products/products.module';
 import { PriceHistoryModule } from '../price-history/price-history.module';
+import { SseModule } from '../sse/sse.module';
 import { SCRAPING_QUEUE, ALERTS_QUEUE, EXPORT_QUEUE } from './queues.config';
 import { redisProvider } from '../config/redis.provider';
 
@@ -21,6 +22,7 @@ import { redisProvider } from '../config/redis.provider';
     ScraperModule,
     ProductsModule,
     PriceHistoryModule,
+    SseModule,
   ],
   providers: [
     redisProvider,

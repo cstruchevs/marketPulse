@@ -4,9 +4,8 @@ import { Job } from 'bullmq';
 import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
 import { ConfigService } from '@nestjs/config';
 import { ProductRepository } from '../products/repositories/product.repository';
+import { SseService } from '../sse/sse.service';
 import { ALERTS_QUEUE, SEND_PRICE_ALERT_JOB } from './queues.config';
-// AlertEvent and UsersRepository will be wired in once the modules expose them
-// For now we import what's available and log the rest
 
 interface AlertJobData {
   productId: string;
@@ -24,6 +23,7 @@ export class AlertsProcessor extends WorkerHost {
 
   constructor(
     private readonly productRepo: ProductRepository,
+    private readonly sseService: SseService,
     private readonly config: ConfigService,
   ) {
     super();
@@ -45,24 +45,27 @@ export class AlertsProcessor extends WorkerHost {
       return;
     }
 
-    // Guard: user may have disabled alerts after this job was enqueued
     if (!product.alertEnabled) {
       this.logger.log(`Alerts disabled for product ${productId} — skipping`);
       return;
     }
 
     const productName = product.name ?? product.url;
-    const priceDiff = ((oldPrice - newPrice) / oldPrice) * 100;
-
-    this.logger.log(
-      `Sending price alert for product ${productId}: ` +
-        `${oldPrice} → ${newPrice} (${priceDiff.toFixed(1)}% drop, threshold=${threshold})`,
-    );
 
     await this.sendEmail(userId, productName, oldPrice, newPrice, threshold, product.url);
 
-    // SSE notification will be added in Step 9 when SseService is available
-    this.logger.log(`SSE notification stub: userId=${userId} price=${newPrice}`);
+    // Real-time alert via SSE
+    this.sseService.sendToUser(userId, {
+      type: 'price-alert',
+      data: {
+        productId,
+        name: productName,
+        newPrice,
+        threshold,
+        currency: product.currency,
+      },
+      id: `price-alert-${productId}-${Date.now()}`,
+    });
   }
 
   private async sendEmail(
@@ -79,7 +82,7 @@ export class AlertsProcessor extends WorkerHost {
       ``,
       `Product: ${productName}`,
       `Previous price: $${oldPrice.toFixed(2)}`,
-      `Current price: $${newPrice.toFixed(2)}`,
+      `Current price:  $${newPrice.toFixed(2)}`,
       `Your threshold: $${threshold.toFixed(2)}`,
       ``,
       `View product: ${url}`,
@@ -91,10 +94,7 @@ export class AlertsProcessor extends WorkerHost {
       await this.ses.send(
         new SendEmailCommand({
           Source: this.fromEmail,
-          Destination: {
-            // userId is email in dev; in prod fetch from UsersService (wired in Step 9)
-            ToAddresses: [userId],
-          },
+          Destination: { ToAddresses: [userId] },
           Message: {
             Subject: { Data: subject, Charset: 'UTF-8' },
             Body: { Text: { Data: body, Charset: 'UTF-8' } },
