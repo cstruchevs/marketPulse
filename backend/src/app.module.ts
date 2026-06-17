@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { ProductsModule } from './products/products.module';
 import { PriceHistoryModule } from './price-history/price-history.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { ScraperModule } from './scraper/scraper.module';
 
 @Module({
   imports: [
@@ -32,7 +33,8 @@ import { AlertsModule } from './alerts/alerts.module';
     ProductsModule,
     PriceHistoryModule,
     AlertsModule,
-    // ScraperModule    — Step 7
+    ScraperModule,
+    // ScraperApiModule — Step 7
     // WorkersModule    — Step 8
     // SseModule        — Step 9
     // McpModule        — Step 10
