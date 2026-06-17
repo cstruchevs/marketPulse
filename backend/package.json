@@ -18,7 +18,8 @@
     "migration:generate": "typeorm-ts-node-commonjs migration:generate src/migrations/Migration -d src/config/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
-    "scrape": "ts-node -r tsconfig-paths/register ../scripts/manual-scrape.ts"
+    "scrape": "ts-node -r tsconfig-paths/register ../scripts/manual-scrape.ts",
+    "mcp": "ts-node -r tsconfig-paths/register ../scripts/mcp-server.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
